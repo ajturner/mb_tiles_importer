@@ -62,6 +62,9 @@ int main(int argc, char **argv){
   DIR *dirz;
   DIR *dirx;
   DIR *diry;
+  int z;
+  int x;
+  int y;
 
   static const char *accepted_formats[] = {"png", "jpg"};
   char* format;
@@ -71,11 +74,11 @@ int main(int argc, char **argv){
   char* tile_source;
   char * formatpt;
 
-  char query[400];
+  char query[8000];
   char dirname[400];
   char fname[400];
-  unsigned char buffer[40000];
-  char encoded_buffer[40000];
+  unsigned char buffer[10000];
+  unsigned char encoded_buffer[10000];
   char entyname[400];
 
   while(1) {
@@ -104,9 +107,11 @@ int main(int argc, char **argv){
     }
   }
 
-  // if( argc != 3 ){
-  //   fail_with_help(argv);
-  // }
+  if (format == NULL) {
+    printf("Format required.");
+    fail_with_help(argv);
+    return 1;
+  }
 
   // TODO: check that file doesn't already exist
   rc = sqlite3_open_v2(destination, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
@@ -121,7 +126,7 @@ int main(int argc, char **argv){
   rc = sqlite3_exec(db, "create unique index tile_index on tiles (zoom_level, tile_column, tile_row)", NULL, 0, &zErrMsg);
   dirz = opendir(tile_source);
 
-  if (dirz) {
+  if (dirz != NULL) {
     while((entz = readdir(dirz)) != NULL) {
       if (strcmp(entz->d_name, ".") && strcmp(entz->d_name, "..")) { 
         sprintf(dirname, "%s/%s", tile_source, entz->d_name);
@@ -139,33 +144,46 @@ int main(int argc, char **argv){
                   entyname[yvalue] = '\0';
                   sprintf(fname, "%s/%s/%s/%s", tile_source, entz->d_name, entx->d_name, enty->d_name);
 
-                  FILE * f;
+                  FILE * fp;
+                  int i = 0;
                   long int filesize = 0;
-                  f = fopen(fname, "r");
-                  while (!feof(f))
-                  {
-                      fgets(buffer,256,f);
-                      filesize += 256;
-                  }
+                  static sqlite3_stmt *pStmtInsertBlob = NULL;
+                  fp = fopen(fname, "r");
+                  for (i = 0; (rc = getc(fp)) != EOF && i < 10000; buffer[i++] = rc);
 
-                  bin2hex(encoded_buffer, buffer, filesize);
+                  sqlite_encode_binary(buffer, i, encoded_buffer);
                   
-                  sprintf(query, 
-                      "insert into tiles (zoom_level, tile_column, tile_row, tile_data) values (%s, %s, %s, %s);", 
-                      entz->d_name, 
-                      entx->d_name, 
-                      entyname, 
-                      encoded_buffer);
+                  char *mquery = "insert into tiles (zoom_level, tile_column, tile_row, tile_data) values (?1, ?2, ?3, ?4);";
 
-                  rc = sqlite3_exec(db, query, NULL, 0, &zErrMsg);
+                  if(sqlite3_prepare_v2(db, mquery, -1, &pStmtInsertBlob, 0) != SQLITE_OK)
+	                {
+	                        printf("Could not prepare INSERT blob statement.\n");
+	                        return;
+	                }
+                  
+                  z = atoi(entz->d_name);
+                  x = atoi(entx->d_name);
+                  y = atoi(entyname);
 
-                  if (rc) {
-                    fprintf(stderr, "SQL Error: %s\n", sqlite3_errmsg(db));
-                    sqlite3_close(db);
-                    exit(1);
+                  rc = sqlite3_exec(db, mquery, NULL, 0, &zErrMsg);
+
+                  if ((rc = sqlite3_bind_blob(pStmtInsertBlob, 4, buffer, i, SQLITE_STATIC)) != SQLITE_OK) {
+                    printf("failed");
+                  }
+                  if ((rc = sqlite3_bind_int(pStmtInsertBlob, 1, z)) != SQLITE_OK) {
+                    printf("failed");
+                  }
+                  if ((rc = sqlite3_bind_int(pStmtInsertBlob, 2, x)) != SQLITE_OK) {
+                    printf("failed");
+                  }
+                  if ((rc = sqlite3_bind_int(pStmtInsertBlob, 3, y)) != SQLITE_OK) {
+                    printf("failed");
                   }
 
-                  encoded_buffer[0] = '\0';
+                  if((rc = sqlite3_step(pStmtInsertBlob)) != SQLITE_DONE)
+                    printf("error\n");
+                  else
+                    sqlite3_reset(pStmtInsertBlob);
                 }
               }
             }
