@@ -78,7 +78,6 @@ int main(int argc, char **argv){
   char dirname[400];
   char fname[400];
   unsigned char buffer[10000];
-  unsigned char encoded_buffer[10000];
   char entyname[400];
 
   while(1) {
@@ -151,8 +150,6 @@ int main(int argc, char **argv){
                   fp = fopen(fname, "r");
                   for (i = 0; (rc = getc(fp)) != EOF && i < 10000; buffer[i++] = rc);
 
-                  sqlite_encode_binary(buffer, i, encoded_buffer);
-                  
                   char *mquery = "insert into tiles (zoom_level, tile_column, tile_row, tile_data) values (?1, ?2, ?3, ?4);";
 
                   if(sqlite3_prepare_v2(db, mquery, -1, &pStmtInsertBlob, 0) != SQLITE_OK)
