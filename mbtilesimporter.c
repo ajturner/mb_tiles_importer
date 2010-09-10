@@ -10,17 +10,6 @@
  * MapBox tiles importer
  */
 
-/*
-static int callback(void *NotUsed, int argc, char **argv, char **azColName){
-  int i;
-  for(i=0; i<argc; i++){
-    printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
-  }
-  printf("\n");
-  return 0;
-}
-*/
-
 void fail_with_help(char **argv) {
   fprintf(stderr, "Usage: %s -f (png, jpg) [-m<key1> <value1> [-m<key2> <value2>] ... ] [-M <metadata file>] -s <tile source directory> -d <destination mbtiles file>\n", argv[0]);
   exit(1);
@@ -125,7 +114,7 @@ int main(int argc, char **argv){
                   yvalue = strcspn(entyname, ".");
                   entyname[yvalue] = '\0';
                   sprintf(fname, "%s/%s/%s/%s", tile_source, entz->d_name, entx->d_name, enty->d_name);
-                  printf("(%s).\n", fname);
+                  printf(".");
 
                   FILE * fp;
                   int i = 0;
@@ -135,7 +124,6 @@ int main(int argc, char **argv){
                   fp = fopen(fname, "r");
                   for (i = 0; (rc = getc(fp)) != EOF && i < 1000000; buffer[i++] = rc);
 
-                  printf("(%s) read.\n", fname);
                   if(sqlite3_prepare_v2(db, mquery, -1, &pStmtInsertBlob, 0) != SQLITE_OK)
 	                {
 	                        printf("Could not prepare INSERT blob statement.\n");
@@ -145,7 +133,6 @@ int main(int argc, char **argv){
                   z = atoi(entz->d_name);
                   x = atoi(entx->d_name);
                   y = atoi(entyname);
-                  printf("(%s) exec.\n", fname);
 
                   rc = sqlite3_exec(db, mquery, NULL, 0, &zErrMsg);
 
