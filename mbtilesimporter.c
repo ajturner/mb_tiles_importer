@@ -3,7 +3,7 @@
 #include <getopt.h>
 #include <dirent.h>
 #include <sys/types.h>
-#include <sqlite3.h>
+#include "sqlite3.h"
 #include <string.h>
 
 /**
