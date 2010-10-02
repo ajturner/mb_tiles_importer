@@ -8,46 +8,17 @@
 
 /**
  * MapBox tiles importer
+ * (c) Development Seed 2010
+ * BSD licensed: http://creativecommons.org/licenses/BSD/
  */
 
-/*
-static int callback(void *NotUsed, int argc, char **argv, char **azColName){
-  int i;
-  for(i=0; i<argc; i++){
-    printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
-  }
-  printf("\n");
-  return 0;
+int fail_with_help(char **argv) {
+  fprintf(
+      stderr, 
+      "Usage: %s -f (png, jpg) [-m<key1> <value1> [-m<key2> <value2>] ... ] -v (verbose) [-M <metadata file>] -s <tile source directory> -d <destination mbtiles file>\n", 
+      argv[0]);
+  return 1;
 }
-*/
-
-void fail_with_help(char **argv) {
-  fprintf(stderr, "Usage: %s -f (png, jpg) [-m<key1> <value1> [-m<key2> <value2>] ... ] [-M <metadata file>] -s <tile source directory> -d <destination mbtiles file>\n", argv[0]);
-  exit(1);
-}
-
-/* Convert binary data to binhex encoded data.
-** The out[] buffer must be twice the number of bytes to encode.
-** "len" is the size of the data in the in[] buffer to encode.
-** Return the number of bytes encoded, or -1 on error.
-*/
-int bin2hex(char *out, const char *in, int len)
-{
-  int ct = len;
-  if (!in || !out || len < 0) return -1;
-
-  /* hexadecimal lookup table */
-  static char hex[] = "0123456789ABCDEF";
-
-  while (ct-- > 0)
-  {
-    *out   = hex[*in >> 4];
-    *out++ = hex[*in++ & 0x0F];
-  }
-
-  return len;
-}
-
 
 int main(int argc, char **argv){
   sqlite3 *db;
@@ -65,23 +36,28 @@ int main(int argc, char **argv){
   int z;
   int x;
   int y;
+  int i = 0;
 
   static const char *accepted_formats[] = {"png", "jpg"};
   char* format;
   char* destination;
   char* metadata;
   char* metafile;
-  char* tile_source;
-  char * formatpt;
+  char* formatpt;
 
+  FILE * fp;
+  char* tile_source;
   char query[8000];
   char dirname[400];
   char fname[400];
   unsigned char buffer[10000];
   char entyname[400];
+  int verbose = 0;
+  char *mquery = "insert into tiles (zoom_level, tile_column, tile_row, tile_data) values (?1, ?2, ?3, ?4);";
+  static sqlite3_stmt *pStmtInsertBlob = NULL;
 
   while(1) {
-    c = getopt (argc, argv, "f:m:M:s:d:");
+    c = getopt (argc, argv, "f:m:M:s:d:v");
     if (c == -1) {
       break;
     }
@@ -102,6 +78,9 @@ int main(int argc, char **argv){
         case 's':
           tile_source = optarg; // TODO: validate
           break;
+        case 'v':
+          verbose = 1;
+          break;
       }
     }
   }
@@ -113,7 +92,8 @@ int main(int argc, char **argv){
   }
 
   // TODO: check that file doesn't already exist
-  rc = sqlite3_open_v2(destination, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+  rc = sqlite3_open_v2(destination, 
+      &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 
   if (rc) {
     fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
@@ -121,8 +101,21 @@ int main(int argc, char **argv){
     exit(1);
   }
 
-  rc = sqlite3_exec(db, "create table tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob)", NULL, 0, &zErrMsg);
-  rc = sqlite3_exec(db, "create unique index tile_index on tiles (zoom_level, tile_column, tile_row)", NULL, 0, &zErrMsg);
+  rc = sqlite3_exec(db, 
+      "create table tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob)", 
+      NULL, 0, &zErrMsg);
+
+  rc = sqlite3_exec(db, 
+      "create table metadata (name text, value text)", 
+      NULL, 0, &zErrMsg);
+
+  rc = sqlite3_exec(db, 
+      "create unique index name on metadata (name)", 
+      NULL, 0, &zErrMsg);
+
+  rc = sqlite3_exec(db, 
+      "create unique index tile_index on tiles (zoom_level, tile_column, tile_row)", 
+      NULL, 0, &zErrMsg);
   dirz = opendir(tile_source);
 
   if (dirz != NULL) {
@@ -137,25 +130,30 @@ int main(int argc, char **argv){
             while ((enty = readdir(diry)) != NULL) {
               if (strcmp(enty->d_name, ".") && strcmp(enty->d_name, "..")) { 
                 if (strstr(enty->d_name, format) != NULL) {
-                  printf(".");
                   strcpy(entyname, enty->d_name);
                   yvalue = strcspn(entyname, ".");
                   entyname[yvalue] = '\0';
-                  sprintf(fname, "%s/%s/%s/%s", tile_source, entz->d_name, entx->d_name, enty->d_name);
 
-                  FILE * fp;
-                  int i = 0;
-                  long int filesize = 0;
-                  static sqlite3_stmt *pStmtInsertBlob = NULL;
+                  sprintf(fname, 
+                      "%s/%s/%s/%s", 
+                      tile_source, 
+                      entz->d_name, entx->d_name, enty->d_name);
+
+                  if (verbose == 1) {
+                    printf("%s\n", fname);
+                  }
+                  else {
+                    printf(".");
+                  }
+
                   fp = fopen(fname, "r");
-                  for (i = 0; (rc = getc(fp)) != EOF && i < 10000; buffer[i++] = rc);
-
-                  char *mquery = "insert into tiles (zoom_level, tile_column, tile_row, tile_data) values (?1, ?2, ?3, ?4);";
+                  for (i = 0; i < 10000 && (rc = getc(fp)) != EOF; buffer[i++] = rc);
+                  fclose(fp);
 
                   if(sqlite3_prepare_v2(db, mquery, -1, &pStmtInsertBlob, 0) != SQLITE_OK)
 	                {
-	                        printf("Could not prepare INSERT blob statement.\n");
-	                        return;
+	                  printf("Could not prepare INSERT blob statement.\n");
+	                  return 1;
 	                }
                   
                   z = atoi(entz->d_name);
@@ -164,7 +162,8 @@ int main(int argc, char **argv){
 
                   rc = sqlite3_exec(db, mquery, NULL, 0, &zErrMsg);
 
-                  if ((rc = sqlite3_bind_blob(pStmtInsertBlob, 4, buffer, i, SQLITE_STATIC)) != SQLITE_OK) {
+                  if ((rc = sqlite3_bind_blob(pStmtInsertBlob, 
+                          4, buffer, i, SQLITE_STATIC)) != SQLITE_OK) {
                     printf("failed");
                   }
                   if ((rc = sqlite3_bind_int(pStmtInsertBlob, 1, z)) != SQLITE_OK) {
@@ -189,7 +188,8 @@ int main(int argc, char **argv){
       }
     }
   }
-  else { fail_with_help(argv); }
+  else { return fail_with_help(argv); }
+  printf("finished importing tiles\n");
 
   sqlite3_close(db);
   return 0;
