@@ -3,7 +3,7 @@
 #include <getopt.h>
 #include <dirent.h>
 #include <sys/types.h>
-#include <sqlite3.h>
+#include "sqlite3.h"
 #include <string.h>
 
 /**
@@ -55,6 +55,7 @@ int main(int argc, char **argv){
   int verbose = 0;
   char *mquery = "insert into tiles (zoom_level, tile_column, tile_row, tile_data) values (?1, ?2, ?3, ?4);";
   static sqlite3_stmt *pStmtInsertBlob = NULL;
+
 
   while(1) {
     c = getopt (argc, argv, "f:m:M:s:d:v");
@@ -177,9 +178,10 @@ int main(int argc, char **argv){
                   }
 
                   if((rc = sqlite3_step(pStmtInsertBlob)) != SQLITE_DONE)
-                    printf("error\n");
+                    printf("blob prob error\n");
                   else
                     sqlite3_reset(pStmtInsertBlob);
+                  fclose(fp);
                 }
               }
             }
