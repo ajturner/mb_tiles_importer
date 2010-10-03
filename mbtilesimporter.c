@@ -95,6 +95,7 @@ int main(int argc, char **argv){
   // TODO: check that file doesn't already exist
   rc = sqlite3_open_v2(destination, 
       &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+  sqlite3_extended_result_codes(db, 1);
 
   if (rc) {
     fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
@@ -160,6 +161,7 @@ int main(int argc, char **argv){
                   z = atoi(entz->d_name);
                   x = atoi(entx->d_name);
                   y = atoi(entyname);
+                  printf("(%d, %d, %d)\n", z, x, y);
 
                   rc = sqlite3_exec(db, mquery, NULL, 0, &zErrMsg);
 
@@ -177,11 +179,14 @@ int main(int argc, char **argv){
                     printf("failed");
                   }
 
-                  if((rc = sqlite3_step(pStmtInsertBlob)) != SQLITE_DONE)
-                    printf("blob prob error\n");
-                  else
+                  if((rc = sqlite3_step(pStmtInsertBlob)) != SQLITE_DONE) {
+                    fprintf(stderr, "blob prob error\n");
+                    fprintf(stderr, "problem: %s\n", zErrMsg);
+                    return 1;
+                  }
+                  else {
                     sqlite3_reset(pStmtInsertBlob);
-                  fclose(fp);
+                  }
                 }
               }
             }
